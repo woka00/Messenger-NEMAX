@@ -4,16 +4,18 @@ import (
 	"fmt"
 	"strings"
 
-	"olimps/internal/httpapi"
-	"olimps/internal/sessions"
-	"olimps/internal/tcpserver"
-	"olimps/internal/users"
-	"olimps/internal/ws"
+	"github.com/woka00/Messenger-NEMAX/internal/httpapi"
+	"github.com/woka00/Messenger-NEMAX/internal/sessions"
+	"github.com/woka00/Messenger-NEMAX/internal/tcpserver"
+	"github.com/woka00/Messenger-NEMAX/internal/users"
+	"github.com/woka00/Messenger-NEMAX/internal/ws"
 )
 
-// Run стартует http+tcp и инициализирует все
+// Run initializes in-memory storage and starts HTTP and TCP servers.
 func Run(tcpAddr, httpAddr string) error {
-	users.InitDefaults()
+	if err := users.InitDefaults(); err != nil {
+		return fmt.Errorf("initialize default users: %w", err)
+	}
 	sessions.StartCleanup()
 
 	hub := ws.NewHub()

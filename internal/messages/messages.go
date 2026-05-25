@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// Message одна запись чата
+// Message is a single private chat message.
 type Message struct {
 	From string
 	To   string
@@ -18,14 +18,14 @@ var (
 	mu    sync.Mutex
 )
 
-// Add кладет получателю
+// Add stores a message in the recipient inbox.
 func Add(to string, msg Message) {
 	mu.Lock()
 	defer mu.Unlock()
 	inbox[to] = append(inbox[to], msg)
 }
 
-// Inbox копия входящих
+// Inbox returns a copy of messages received by a user.
 func Inbox(login string) []Message {
 	mu.Lock()
 	defer mu.Unlock()
@@ -34,7 +34,7 @@ func Inbox(login string) []Message {
 	return result
 }
 
-// Dialog диалог с сортировкой по времени
+// Dialog returns messages between two users ordered by creation time.
 func Dialog(login, with string) []Message {
 	mu.Lock()
 	defer mu.Unlock()

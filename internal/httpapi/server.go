@@ -6,14 +6,13 @@ import (
 	"net"
 	"net/http"
 	"sort"
-	"strings"
 	"time"
 
-	"olimps/internal/messages"
-	"olimps/internal/ratelimit"
-	"olimps/internal/sessions"
-	"olimps/internal/users"
-	"olimps/internal/ws"
+	"github.com/woka00/Messenger-NEMAX/internal/messages"
+	"github.com/woka00/Messenger-NEMAX/internal/ratelimit"
+	"github.com/woka00/Messenger-NEMAX/internal/sessions"
+	"github.com/woka00/Messenger-NEMAX/internal/users"
+	"github.com/woka00/Messenger-NEMAX/internal/ws"
 )
 
 type loginRequest struct {
@@ -22,10 +21,8 @@ type loginRequest struct {
 }
 
 type sendRequest struct {
-	FromLogin string `json:"fromLogin"`
-	Password  string `json:"password"`
-	ToLogin   string `json:"toLogin"`
-	Text      string `json:"text"`
+	ToLogin string `json:"toLogin"`
+	Text    string `json:"text"`
 }
 
 type inboxMessage struct {
@@ -34,8 +31,7 @@ type inboxMessage struct {
 }
 
 type dialogRequest struct {
-	Login string `json:"login"`
-	With  string `json:"with"`
+	With string `json:"with"`
 }
 
 type dialogMessage struct {
@@ -104,8 +100,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	clientIP := getClientIP(r)
 
 	if !ratelimit.CheckRateLimit(clientIP) {
-		w.WriteHeader(http.StatusTooManyRequests)
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error": "Превышен лимит попыток. Попробуйте позже.",
 		})
@@ -113,8 +109,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if blocked, until := ratelimit.CheckLoginBlocked(clientIP); blocked {
-		w.WriteHeader(http.StatusTooManyRequests)
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
 		remaining := time.Until(until).Round(time.Second)
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error": fmt.Sprintf("IP временно заблокирован. Попробуйте через %v", remaining),
@@ -146,6 +142,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   int(sessions.Duration.Seconds()),
 	})
 
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]string{"login": req.Login})
 }
@@ -218,17 +215,15 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if users.Exists(req.Login) {
-		http.Error(w, "Пользователь уже существует", http.StatusConflict)
-		return
-	}
-
 	passwordHash, err := users.HashPassword(req.Password)
 	if err != nil {
 		http.Error(w, "Не удалось захешировать пароль", http.StatusInternalServerError)
 		return
 	}
-	users.Add(req.Login, passwordHash)
+	if !users.AddIfAbsent(req.Login, passwordHash) {
+		http.Error(w, "Пользователь уже существует", http.StatusConflict)
+		return
+	}
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -266,17 +261,13 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	if login != req.FromLogin {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
 	if !users.Exists(req.ToLogin) {
 		http.Error(w, "unknown recipient", http.StatusBadRequest)
 		return
 	}
 
 	msg := messages.Message{
-		From: req.FromLogin,
+		From: login,
 		To:   req.ToLogin,
 		Text: req.Text,
 		Time: time.Now().UnixNano(),
@@ -285,7 +276,7 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 
 	wsMsg := ws.Message{
 		Type: "new_message",
-		From: req.FromLogin,
+		From: login,
 		To:   req.ToLogin,
 		Text: req.Text,
 		Time: msg.Time,
@@ -335,16 +326,12 @@ func (s *Server) handleDialog(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	if login != req.Login {
-		w.WriteHeader(http.StatusForbidden)
-		return
-	}
 	if !users.Exists(req.With) {
 		http.Error(w, "unknown peer", http.StatusBadRequest)
 		return
 	}
 
-	all := messages.Dialog(req.Login, req.With)
+	all := messages.Dialog(login, req.With)
 	result := make([]dialogMessage, 0, len(all))
 	for _, m := range all {
 		result = append(result, dialogMessage{
@@ -368,15 +355,6 @@ func (s *Server) getSessionFromRequest(r *http.Request) (string, bool) {
 }
 
 func getClientIP(r *http.Request) string {
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		parts := strings.Split(ip, ",")
-		if len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
-		}
-	}
-	if ip := r.Header.Get("X-Real-Ip"); ip != "" {
-		return ip
-	}
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

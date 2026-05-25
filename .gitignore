@@ -1,0 +1,12 @@
+# Go build output
+*.exe
+*.out
+*.test
+bin/
+coverage.out
+
+# Local environment and editor settings
+.env
+.idea/
+.vscode/
+.DS_Store

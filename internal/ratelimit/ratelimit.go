@@ -6,9 +6,10 @@ import (
 )
 
 type loginAttempts struct {
-	FailedCount  int
-	BlockedUntil time.Time
-	LastAttempt  time.Time
+	FailedCount      int
+	AttemptsInWindow int
+	BlockedUntil     time.Time
+	WindowStarted    time.Time
 }
 
 var (
@@ -23,34 +24,30 @@ const (
 	maxAttemptsPerWindow = 10
 )
 
-// проверка бана
+// CheckLoginBlocked reports whether login attempts are temporarily blocked.
 func CheckLoginBlocked(identifier string) (bool, time.Time) {
-	mu.RLock()
-	defer mu.RUnlock()
+	mu.Lock()
+	defer mu.Unlock()
 
 	entry, exists := attempts[identifier]
 	if !exists {
 		return false, time.Time{}
 	}
 
-	if entry.BlockedUntil.After(time.Now()) {
+	now := time.Now()
+	if entry.BlockedUntil.After(now) {
 		return true, entry.BlockedUntil
 	}
 
-	if entry.BlockedUntil.Before(time.Now()) && entry.BlockedUntil != (time.Time{}) {
-		// снимаем блок и обнуляем
-		mu.RUnlock()
-		mu.Lock()
+	if !entry.BlockedUntil.IsZero() {
 		entry.FailedCount = 0
 		entry.BlockedUntil = time.Time{}
-		mu.Unlock()
-		mu.RLock()
 	}
 
 	return false, time.Time{}
 }
 
-// лимит в окне
+// CheckRateLimit allows no more than a fixed number of login requests per window.
 func CheckRateLimit(identifier string) bool {
 	mu.Lock()
 	defer mu.Unlock()
@@ -59,24 +56,27 @@ func CheckRateLimit(identifier string) bool {
 	now := time.Now()
 
 	if !exists {
-		attempts[identifier] = &loginAttempts{LastAttempt: now}
+		attempts[identifier] = &loginAttempts{
+			AttemptsInWindow: 1,
+			WindowStarted:    now,
+		}
 		return true
 	}
 
-	if now.Sub(entry.LastAttempt) > window {
-		entry.LastAttempt = now
-		return true
+	if now.Sub(entry.WindowStarted) >= window {
+		entry.AttemptsInWindow = 0
+		entry.WindowStarted = now
 	}
 
-	if entry.FailedCount >= maxAttemptsPerWindow {
+	if entry.AttemptsInWindow >= maxAttemptsPerWindow {
 		return false
 	}
 
-	entry.LastAttempt = now
+	entry.AttemptsInWindow++
 	return true
 }
 
-// фиксирует фейл и можем блокнуть быдло
+// RecordFailed records an invalid login and may temporarily block it.
 func RecordFailed(identifier string) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -88,13 +88,12 @@ func RecordFailed(identifier string) {
 	}
 
 	entry.FailedCount++
-	entry.LastAttempt = time.Now()
 	if entry.FailedCount >= maxFailedAttempts {
 		entry.BlockedUntil = time.Now().Add(blockDuration)
 	}
 }
 
-// RecordSuccess чистим счетчики
+// RecordSuccess clears failed-login blocking state.
 func RecordSuccess(identifier string) {
 	mu.Lock()
 	defer mu.Unlock()

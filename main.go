@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"olimps/internal/messenger"
+	"github.com/woka00/Messenger-NEMAX/internal/messenger"
 )
 
-// Zapusk servera ili centa bez lishnego
+// Запуск сервера или консольного клиента:
 //
 //	go run . -mode=server -addr=":9000"
 //	go run . -mode=client -addr="127.0.0.1:9000"

@@ -2,19 +2,17 @@ package tcpserver
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"net"
 	"strings"
 	"time"
 
-	"olimps/internal/messages"
-	"olimps/internal/ratelimit"
-	"olimps/internal/users"
+	"github.com/woka00/Messenger-NEMAX/internal/messages"
+	"github.com/woka00/Messenger-NEMAX/internal/ratelimit"
+	"github.com/woka00/Messenger-NEMAX/internal/users"
 )
 
-// поднимает tcp мессенджер
+// Run starts the TCP messenger server.
 func Run(addr string) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -65,7 +63,7 @@ func handleConn(conn net.Conn) {
 				continue
 			}
 
-			connID := conn.RemoteAddr().String()
+			connID := remoteIP(conn.RemoteAddr())
 
 			if !ratelimit.CheckRateLimit(connID) {
 				writeLine(writer, "Превышен лимит попыток. Попробуйте позже.")
@@ -79,9 +77,7 @@ func handleConn(conn net.Conn) {
 
 			login := parts[1]
 			password := parts[2]
-			psha := sha256.Sum256([]byte(password))
-			passwordBase64 := base64.StdEncoding.EncodeToString(psha[:])
-			if !users.CheckCredentials(login, passwordBase64) {
+			if !users.CheckCredentials(login, password) {
 				ratelimit.RecordFailed(connID)
 				writeLine(writer, "Неверный логин или пароль")
 				continue
@@ -174,4 +170,12 @@ func handleConn(conn net.Conn) {
 func writeLine(w *bufio.Writer, s string) {
 	_, _ = w.WriteString(s + "\n")
 	_ = w.Flush()
+}
+
+func remoteIP(addr net.Addr) string {
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return addr.String()
+	}
+	return host
 }

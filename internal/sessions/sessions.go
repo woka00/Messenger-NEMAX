@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// держит состояние авторизации
+// Session contains authentication state stored in memory.
 type Session struct {
 	Token     string
 	Login     string
@@ -23,7 +23,7 @@ var (
 	mu    sync.RWMutex
 )
 
-// выдает новый токен для логина+ip
+// Create generates a session tied to the client's IP address.
 func Create(login, ip string) (string, error) {
 	token, err := generateToken()
 	if err != nil {
@@ -46,7 +46,7 @@ func Create(login, ip string) (string, error) {
 	return token, nil
 }
 
-// сверяет токен и IP
+// Validate checks that a token exists, is not expired, and matches the IP address.
 func Validate(token, clientIP string) (string, bool) {
 	mu.RLock()
 	session, exists := store[token]
@@ -64,14 +64,14 @@ func Validate(token, clientIP string) (string, bool) {
 	return session.Login, true
 }
 
-// убирает сессию по токену
+// Delete removes a session token.
 func Delete(token string) {
 	mu.Lock()
 	defer mu.Unlock()
 	delete(store, token)
 }
 
-// чистит протухшие сессии по таймеру
+// StartCleanup periodically removes expired sessions.
 func StartCleanup() {
 	ticker := time.NewTicker(time.Hour)
 	go func() {

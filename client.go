@@ -7,8 +7,7 @@ import (
 	"os"
 )
 
-// stdin/stdout tcp
-// addr "127.0.0.1:9000"
+// runClient connects standard input and output to the TCP chat protocol.
 func runClient(addr string) error {
 	fmt.Println("Подключаюсь к серверу", addr)
 

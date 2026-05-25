@@ -2,17 +2,12 @@ package ws
 
 import (
 	"encoding/json"
-	"net/http"
 
 	"github.com/gorilla/websocket"
 )
 
-// гонит http в ws
-var Upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
+// Upgrader uses gorilla/websocket's same-origin validation.
+var Upgrader = websocket.Upgrader{}
 
 type Client struct {
 	conn  *websocket.Conn
@@ -28,7 +23,7 @@ type Hub struct {
 	unregister chan *Client
 }
 
-// тело ws
+// Message is a notification sent to browser clients.
 type Message struct {
 	Type     string          `json:"type"`
 	From     string          `json:"from,omitempty"`
@@ -78,12 +73,12 @@ func (h *Hub) Run() {
 	}
 }
 
-// шлет всем
+// Broadcast sends a payload through the hub.
 func (h *Hub) Broadcast(msg []byte) {
 	h.broadcast <- msg
 }
 
-// цепляет клиента и гонит pump
+// Register attaches an authenticated WebSocket connection to the hub.
 func (h *Hub) Register(conn *websocket.Conn, login string) {
 	client := &Client{
 		conn:  conn,

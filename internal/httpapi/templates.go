@@ -45,15 +45,7 @@ const (
 			status.textContent = 'Проверяю...'; status.className = 'status';
 			if (!login || !password) { status.textContent = 'Заполните логин и пароль'; status.className = 'status err'; return; }
 			try {
-				// schitaem sha256+base64 vmesto plain
-				const enc = new TextEncoder();
-				const buf = await crypto.subtle.digest('SHA-256', enc.encode(password));
-				let binary = '';
-				const bytes = new Uint8Array(buf);
-				for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-				const passB64 = btoa(binary);
-
-				const res = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login,password:passB64}), credentials:'include' });
+				const res = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login,password}), credentials:'include' });
 				if (res.ok) {
 					status.textContent = 'Успех! Перенаправляю...'; status.className = 'status ok';
 					window.location.href = '/app';
@@ -133,18 +125,10 @@ const (
       if (login.length < 3 || password.length < 3) { status.textContent = 'Минимум 3 символа'; status.className='status err'; return; }
       if (password !== confirm) { status.textContent = 'Пароли не совпадают'; status.className='status err'; return; }
       try {
-				// parol ne shlem vchistuyu sha256->base64
-				const enc = new TextEncoder();
-				const buf = await crypto.subtle.digest('SHA-256', enc.encode(password));
-				let binary = '';
-				const bytes = new Uint8Array(buf);
-				for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-				const passB64 = btoa(binary);
-
-				const res = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login,password:passB64}), credentials:'include' });
+        const res = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login,password}), credentials:'include' });
         if (res.ok) {
-          // posle registr srazu loginimsya
-					const loginRes = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login,password:passB64}), credentials:'include' });
+          // Log in immediately after registration.
+          const loginRes = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({login,password}), credentials:'include' });
           if (loginRes.ok) {
             status.textContent = 'Аккаунт создан! Перенаправляю...'; status.className='status ok';
             window.location.href = '/app';
@@ -402,7 +386,7 @@ const (
     <div class="app-header">
         <div>
             <div class="app-title">NEMAX</div>
-            <div class="app-subtitle">Лучше, чем телеграм, хуже, чем макс</div>
+            <div class="app-subtitle">Учебный локальный мессенджер</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
             <div class="app-subtitle" id="currentUserLabel">...</div>
@@ -440,7 +424,7 @@ let allUsers = [];
 let ws = null;
 
 async function loadCreds() {
-    // berem login iz sessii API
+    // Obtain the current login from the authenticated session.
     try {
         const res = await fetch('/api/me', { credentials:'include' });
         if (!res.ok) {
@@ -450,7 +434,7 @@ async function loadCreds() {
         const data = await res.json();
         currentLogin = data.login;
         document.getElementById('currentUserLabel').textContent = 'Вы: ' + currentLogin;
-        // posle logina konnektim ws
+        // Start real-time updates after authentication.
         connectWebSocket();
     } catch (e) {
         window.location.href = '/';
@@ -484,10 +468,9 @@ function connectWebSocket() {
 
 function handleWebSocketMessage(msg) {
     if (msg.type === 'new_message') {
-        // soobshenie pro tekushchiy dialog
+        // Render notifications for the currently open dialog.
         if ((msg.to === currentLogin && msg.from === currentPeer) || 
             (msg.from === currentLogin && msg.to === currentPeer)) {
-            // dobavlyaem v chat
             addMessageToDialog(msg.from, msg.text, msg.time);
         }
     }
@@ -520,7 +503,7 @@ function addMessageToDialog(from, text, time) {
 }
 
 async function logout() {
-    // zakryvaem ws
+    // Close the active real-time connection before leaving.
     if (ws) {
         ws.close();
         ws = null;
@@ -528,7 +511,7 @@ async function logout() {
     try {
         await fetch('/api/logout', { method:'POST', credentials:'include' });
     } catch (e) {
-        // oshibki ignor
+        // Redirection completes logout even if the request fails.
     }
     window.location.href = '/';
 }
@@ -574,14 +557,13 @@ function buildChatList() {
 }
 
 async function sendMessage() {
-    const fromLogin = currentLogin;
     const toLogin = currentPeer;
     const text = document.getElementById('text').value.trim();
     const statusEl = document.getElementById('sendStatus');
     statusEl.textContent = '';
     statusEl.className = 'status';
 
-    if (!fromLogin || !toLogin) {
+    if (!currentLogin || !toLogin) {
         statusEl.textContent = 'Выберите собеседника.';
         statusEl.className = 'status err';
         return;
@@ -597,13 +579,13 @@ async function sendMessage() {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             credentials: 'include',
-            body: JSON.stringify({fromLogin, toLogin, text})
+            body: JSON.stringify({toLogin, text})
         });
         if (res.ok) {
             statusEl.textContent = 'Сообщение отправлено.';
             statusEl.className = 'status ok';
             document.getElementById('text').value = '';
-            // ws sam dobavit ne zovem loadDialog
+            // The WebSocket notification appends this message to the dialog.
         } else if (res.status === 401) {
             statusEl.textContent = 'Неверный логин или пароль.';
             statusEl.className = 'status err';
@@ -640,7 +622,7 @@ async function loadDialog() {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             credentials: 'include',
-            body: JSON.stringify({login, with: withUser})
+            body: JSON.stringify({with: withUser})
         });
         if (!res.ok) {
             box.innerHTML = '<div style="font-size:12px;color:#f97373;">Ошибка / неверные данные.</div>';
@@ -688,7 +670,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
     fetchUsers().then(loadDialog);
-    // avtoobnovlenie ubral dialog gruzim po deystviyam
 });
 </script>
 </body>
